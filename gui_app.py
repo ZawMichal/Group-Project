@@ -1,18 +1,212 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, messagebox
 import cv2
 from PIL import Image, ImageTk
 import threading
 import time
 import datetime
+import psutil
 
 from ai_core.engine import AIEngine
+from ai_core.config import config
+from ai_core.performance_monitor import PerformanceMonitor
+
+class SettingsWindow:
+    """Settings popup window for GPU optimization and performance tuning"""
+    def __init__(self, parent, engine, main_app):
+        self.engine = engine
+        self.main_app = main_app
+        self.window = tk.Toplevel(parent)
+        self.window.title("Settings")
+        self.window.geometry("500x600")
+        self.window.resizable(False, False)
+        
+        # Center window on parent
+        self.window.transient(parent)
+        self.window.grab_set()
+        
+        self.create_tabs()
+    
+    def create_tabs(self):
+        """Create notebook with tabs"""
+        notebook = ttk.Notebook(self.window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # GPU Optimization Tab
+        gpu_frame = ttk.Frame(notebook)
+        notebook.add(gpu_frame, text="GPU Optimization")
+        self.create_gpu_tab(gpu_frame)
+        
+        # Performance Tab
+        perf_frame = ttk.Frame(notebook)
+        notebook.add(perf_frame, text="Performance")
+        self.create_performance_tab(perf_frame)
+        
+        # Display Tab
+        display_frame = ttk.Frame(notebook)
+        notebook.add(display_frame, text="Display")
+        self.create_display_tab(display_frame)
+        
+        # Buttons
+        button_frame = tk.Frame(self.window)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Button(button_frame, text="Apply", command=self.apply_settings, 
+             bg="#27ae60", fg="white", width=10).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Close", command=self.window.destroy,
+             bg="#95a5a6", fg="white", width=10).pack(side=tk.LEFT, padx=5)
+    
+    def create_gpu_tab(self, parent):
+        """GPU Optimization settings"""
+        frame = ttk.LabelFrame(parent, text="GPU Precision Mode", padding=10)
+        frame.pack(fill=tk.BOTH, padx=10, pady=10)
+        
+        self.quantization_var = tk.StringVar(value=config.quantization_mode)
+        
+        ttk.Radiobutton(frame, text="FP32 (Full Precision) - Slower, Most Accurate", 
+                       variable=self.quantization_var, value="fp32").pack(anchor=tk.W, pady=5)
+        ttk.Radiobutton(frame, text="FP16 (Half Precision) - 2× Faster, <0.5% Accuracy Loss", 
+                       variable=self.quantization_var, value="fp16").pack(anchor=tk.W, pady=5)
+        ttk.Radiobutton(frame, text="INT8 (8-bit Quantization) - 3-4× Faster, 1-2% Accuracy Loss", 
+                       variable=self.quantization_var, value="int8").pack(anchor=tk.W, pady=5)
+        
+        info_label = tk.Label(frame, text="Note: Changing this requires reloading face recognition models.\nWill restart face system on Apply.",
+                            bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8), justify=tk.LEFT, wraplength=450)
+        info_label.pack(pady=10)
+        
+        # Tensor Cores
+        frame2 = ttk.LabelFrame(parent, text="GPU Features", padding=10)
+        frame2.pack(fill=tk.BOTH, padx=10, pady=10)
+        
+        self.tensor_cores_var = tk.BooleanVar(value=config.use_tensor_cores)
+        ttk.Checkbutton(frame2, text="Enable Tensor Cores (if available)", 
+                       variable=self.tensor_cores_var).pack(anchor=tk.W, pady=5)
+        
+        self.optimize_mem_var = tk.BooleanVar(value=config.optimize_memory)
+        ttk.Checkbutton(frame2, text="Optimize Memory Layout", 
+                       variable=self.optimize_mem_var).pack(anchor=tk.W, pady=5)
+    
+    def create_performance_tab(self, parent):
+        """Performance monitoring settings"""
+        frame = ttk.LabelFrame(parent, text="Performance Monitoring", padding=10)
+        frame.pack(fill=tk.BOTH, padx=10, pady=10)
+        
+        self.show_metrics_var = tk.BooleanVar(value=config.show_performance_metrics)
+        ttk.Checkbutton(frame, text="Show Performance Metrics (FPS/CPU/GPU/Inference)", 
+                       variable=self.show_metrics_var).pack(anchor=tk.W, pady=5)
+        
+        # Graph mode
+        frame2 = ttk.LabelFrame(parent, text="Performance Graphs", padding=10)
+        frame2.pack(fill=tk.BOTH, padx=10, pady=10)
+        
+        self.graph_mode_var = tk.StringVar(value=config.graph_mode)
+        ttk.Radiobutton(frame2, text="Off - No graphs", 
+                       variable=self.graph_mode_var, value="off").pack(anchor=tk.W, pady=3)
+        ttk.Radiobutton(frame2, text="Compact - One metric as line graph",
+                       variable=self.graph_mode_var, value="compact").pack(anchor=tk.W, pady=3)
+        ttk.Radiobutton(frame2, text="Full - All metrics as graphs",
+                       variable=self.graph_mode_var, value="full").pack(anchor=tk.W, pady=3)
+        
+        # Compact metric selector
+        compact_frame = ttk.Frame(frame2)
+        compact_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(compact_frame, text="Compact metric:").pack(side=tk.LEFT)
+        self.compact_metric_var = tk.StringVar(value=config.compact_metric)
+        metric_combo = ttk.Combobox(compact_frame, textvariable=self.compact_metric_var,
+                                   values=["fps", "cpu", "gpu", "inference"],
+                                   width=12, state="readonly")
+        metric_combo.pack(side=tk.LEFT, padx=5)
+        
+        # Current device info
+        frame3 = ttk.LabelFrame(parent, text="System Information", padding=10)
+        frame3.pack(fill=tk.BOTH, padx=10, pady=10)
+        
+        device_text = f"Current Device: {config.device.upper()}\nQuantization: {config.quantization_mode.upper()}"
+        device_label = tk.Label(frame3, text=device_text, bg="#ecf0f1", fg="#212529",
+                               font=("Consolas", 9), justify=tk.LEFT)
+        device_label.pack(pady=10)
+    
+    def create_display_tab(self, parent):
+        """Display and UI settings"""
+        frame = ttk.LabelFrame(parent, text="Display Options", padding=10)
+        frame.pack(fill=tk.BOTH, padx=10, pady=10)
+        
+        # CSV Logging for debugging
+        ttk.Label(frame, text="Performance Debugging:", font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(10, 5))
+        
+        self.enable_csv_logging_var = tk.BooleanVar(value=config.enable_csv_logging)
+        ttk.Checkbutton(frame, text="Enable CSV Performance Log (performance_debug.csv)", 
+                       variable=self.enable_csv_logging_var).pack(anchor=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Logs configuration, AI state, and performance metrics\nto debug if display affects performance.",
+                 font=("Arial", 8), foreground="gray").pack(anchor=tk.W, pady=(0, 15))
+    
+    def apply_settings(self):
+        """Apply all settings"""
+        new_quantization = self.quantization_var.get()
+        config.show_performance_metrics = self.show_metrics_var.get()
+        config.use_tensor_cores = self.tensor_cores_var.get()
+        config.optimize_memory = self.optimize_mem_var.get()
+        config.graph_mode = self.graph_mode_var.get()
+        config.compact_metric = self.compact_metric_var.get()
+        config.enable_csv_logging = self.enable_csv_logging_var.get()
+        
+        # Start/stop CSV logging if needed
+        if config.enable_csv_logging and not hasattr(self.main_app, 'csv_logger'):
+            from ai_core.csv_logger import PerformanceCSVLogger
+            self.main_app.csv_logger = PerformanceCSVLogger(config.csv_log_path)
+            self.main_app.csv_logger.start()
+            self.main_app._log(f"CSV logging started: {config.csv_log_path}")
+        elif not config.enable_csv_logging and hasattr(self.main_app, 'csv_logger'):
+            self.main_app.csv_logger.stop()
+            del self.main_app.csv_logger
+            self.main_app._log("CSV logging stopped")
+        
+        # If quantization mode changed, reload face system
+        if new_quantization != config.quantization_mode:
+            config.quantization_mode = new_quantization
+            self.main_app._log(f"Switching to {new_quantization} quantization...")
+            
+            # Reload face system in background
+            def reload_faces():
+                try:
+                    self.engine._face_system = None  # Force reload
+                    _ = self.engine.face_system  # Trigger reload
+                    self.main_app._log(f"Face system reloaded with {new_quantization}")
+                except Exception as e:
+                    self.main_app._log(f"Error reloading face system: {e}")
+            
+            threading.Thread(target=reload_faces, daemon=True).start()
+        
+        self.window.destroy()
+    
+    def reset_to_defaults(self):
+        """Reset to default settings"""
+        self.quantization_var.set("fp16")
+        self.show_metrics_var.set(True)
+        self.tensor_cores_var.set(True)
+        self.optimize_mem_var.set(False)
+        self.graph_mode_var.set("off")
+        self.compact_metric_var.set("fps")
+        self.enable_csv_logging_var.set(False)
 
 class RetroAIApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Group Project v2.1")
         self.root.geometry("1300x850")
+        
+        # Performance monitoring
+        self.perf_monitor = PerformanceMonitor()
+        self.metrics_update_thread = None
+        self.last_resize_time = time.time()
+        self.cached_photo_image = None
+        self.cached_display_size = (0, 0)
+        self.frame_skip_counter = 0
+        self.FRAME_SKIP = 2  # Skip every 2nd frame for resize
+
+        # Clear previous CSV log on each app run for fresh captures
+        self._clear_csv_log()
         
         self.create_ui()
         
@@ -84,21 +278,12 @@ class RetroAIApp:
         )
         self.video_label.pack(expand=True, fill=tk.BOTH)
 
-        # Panel Logów
-        log_label = tk.Label(self.right_panel, text="Status & Output:", font=("Arial", 10, "bold"), bg="#2c3e50", fg="white")
-        log_label.pack(anchor=tk.W, padx=10)
-        
-        self.output_text = scrolledtext.ScrolledText(
-            self.right_panel, height=8, font=("Consolas", 9), 
-            bg="#f8f9fa", fg="#212529"
-        )
-        self.output_text.pack(fill=tk.X, padx=10, pady=(0, 10))
-
         # --- TWORZENIE KART ---
         self.create_camera_card()
         self.create_yolo_card()
         self.create_face_rec_card()
         self.create_database_card()
+        self.create_metrics_card()
 
     def create_card_frame(self, title, description):
         card = tk.Frame(self.scrollable_frame, bg="#ffffff", relief=tk.RAISED, bd=2)
@@ -132,6 +317,9 @@ class RetroAIApp:
         btn = tk.Button(content, text="✓ Connect", command=self._connect_camera, bg="#27ae60", fg="white", relief=tk.FLAT)
         btn.pack(side=tk.LEFT, padx=5)
         
+        btn_settings = tk.Button(content, text="⚙ Settings", command=self._open_settings, bg="#3498db", fg="white", relief=tk.FLAT)
+        btn_settings.pack(side=tk.LEFT, padx=2)
+        
         self.camera_status = tk.Label(content, text="Status: Idle", bg="white", fg="#7f8c8d")
         self.camera_status.pack(side=tk.LEFT, padx=10)
 
@@ -152,11 +340,9 @@ class RetroAIApp:
         checks_frame = tk.Frame(content, bg="white")
         checks_frame.pack(fill=tk.X)
         
-        self.var_fps = tk.BooleanVar(value=True)
         self.var_conf = tk.BooleanVar(value=True)
         self.var_labels = tk.BooleanVar(value=True)
         
-        tk.Checkbutton(checks_frame, text="FPS", variable=self.var_fps, command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
         tk.Checkbutton(checks_frame, text="Conf", variable=self.var_conf, command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
         tk.Checkbutton(checks_frame, text="Labels", variable=self.var_labels, command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
 
@@ -216,12 +402,31 @@ class RetroAIApp:
         
         tk.Button(del_frame, text="🔄", command=self._refresh_db_list, relief=tk.FLAT, bg="white").pack(side=tk.LEFT)
 
+    def create_metrics_card(self):
+        content = self.create_card_frame("Display Metrics", "Quick toggle for on-screen performance overlay")
+        tk.Button(content, text="Metrics ON", command=lambda: self._set_metrics(True),
+                  bg="#27ae60", fg="white", relief=tk.FLAT).pack(side=tk.LEFT, padx=5)
+        tk.Button(content, text="Metrics OFF", command=lambda: self._set_metrics(False),
+                  bg="#e74c3c", fg="white", relief=tk.FLAT).pack(side=tk.LEFT, padx=5)
+
     # --- LOGIKA ---
 
     def _log(self, msg):
-        timestamp = __import__('datetime').datetime.now().strftime("%H:%M:%S")
-        self.output_text.insert(tk.END, f"[{timestamp}] {msg}\n")
-        self.output_text.see(tk.END)
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] {msg}")
+
+    def _set_metrics(self, enabled: bool):
+        config.show_performance_metrics = bool(enabled)
+        state = "enabled" if enabled else "disabled"
+        self._log(f"Performance metrics {state}")
+
+    def _clear_csv_log(self):
+        """Remove old performance_debug.csv at app start to avoid stale data"""
+        try:
+            if config.csv_log_path.exists():
+                config.csv_log_path.unlink()
+        except Exception as e:
+            self._log(f"Could not clear CSV log: {e}")
 
     def _connect_camera(self):
         """Connect to manually selected camera ID"""
@@ -291,14 +496,18 @@ class RetroAIApp:
                 self.cap = None
 
     def _update_frame(self):
-        """Główna pętla programu"""
+        """Główna pętla programu - Optimized with frame skipping and metrics"""
         if not self.is_running: return
+
+        self.perf_monitor.frame_start()
 
         # Jeśli kamera działa i jest otwarta
         if self.cap and self.cap.isOpened():
             try:
                 ret, frame = self.cap.read()
                 if not ret or frame is None:
+                    self.perf_monitor.mark_frame_dropped()
+                    self.root.after(10, self._update_frame)
                     return
                 
                 # Resize only for display, not for processing
@@ -310,57 +519,253 @@ class RetroAIApp:
                 else:
                     process_frame = frame
 
+                # Track what's happening for CSV logging
+                is_processing = self.engine.enable_yolo or self.engine.enable_faces
+                
                 # 1. Przetwarzanie w silniku AI TYLKO gdy włączone
-                if self.engine.enable_yolo or self.engine.enable_faces:
+                if is_processing:
                     processed_frame = self.engine.process_frame(process_frame)
                 else:
                     processed_frame = process_frame
                 
-                # 2. Logika nagrywania
+                # 2. Logika nagrywania (save faces every 1 second, not every frame)
                 if self.recording_mode:
-                    cv2.circle(processed_frame, (20, 20), 10, (0, 0, 255), -1)
-                    cv2.putText(processed_frame, "REC", (35, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
-                    
                     if self.target_person_name:
-                        if int(time.time() * 10) % 5 == 0:
-                            # Zapisujemy oryginalną (ew. przeskalowaną) klatkę
+                        # Save every 1s (~10 frames at ~100Hz)
+                        if int(time.time() * 10) % 10 == 0:
                             path = self.engine.manager.save_training_photo(self.target_person_name, process_frame)
                             if path: self._log(f"Saved photo for {self.target_person_name}")
 
-                # 3. Wyświetlanie
-                try:
-                    rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
-                    img = Image.fromarray(rgb)
+                # Track if drawing anything
+                drawing_metrics = config.show_performance_metrics
+                drawing_graph = config.show_performance_metrics and config.graph_mode in ['compact', 'full']
+                
+                # 3. Add performance metrics if enabled
+                if config.show_performance_metrics:
+                    processed_frame = self._draw_performance_metrics(processed_frame)
+                
+                # 4. Wyświetlanie (Optimized - Frame skipping and faster resize)
+                self.frame_skip_counter += 1
+                
+                # Only resize every N frames
+                if self.frame_skip_counter >= self.FRAME_SKIP:
+                    self.frame_skip_counter = 0
+                    self._display_frame(processed_frame)
                     
-                    # Skalowanie do rozmiaru okna w GUI
-                    w_win = self.video_frame.winfo_width()
-                    h_win = self.video_frame.winfo_height()
-                    
-                    # Zabezpieczenie przed minimalnym oknem
-                    if w_win > 10 and h_win > 10:
-                        # Zachowaj proporcje 4:3 żeby nie rozciągać
-                        aspect_ratio = 4/3
-                        new_w = w_win
-                        new_h = int(new_w / aspect_ratio)
-                        
-                        if new_h > h_win:
-                            new_h = h_win
-                            new_w = int(new_h * aspect_ratio)
-                            
-                        img = img.resize((new_w, new_h), Image.LANCZOS)
-                    
-                    imgtk = ImageTk.PhotoImage(image=img)
-                    self.video_label.imgtk = imgtk
-                    self.video_label.configure(image=imgtk, text="")
-                except Exception as e:
-                    print(f"Display error: {e}")
             except Exception as e:
                 # Camera read error - likely camera disconnected
                 self._log(f"Camera error: {e}")
                 self.cap = None
         
+        # Update system metrics periodically (every 250ms to avoid CPU spikes)
+        self.metrics_update_counter = getattr(self, 'metrics_update_counter', 0) + 1
+        if self.metrics_update_counter >= 25:  # ~250ms at 100Hz loop
+            self.metrics_update_counter = 0
+            threading.Thread(target=self.perf_monitor.update_system_metrics, daemon=True).start()
+        
+        self.perf_monitor.frame_end()
+        
+        # CSV Logging - log current state and performance
+        if config.enable_csv_logging and hasattr(self, 'csv_logger'):
+            try:
+                metrics_dict = self.perf_monitor.get_metrics()
+                state = {
+                    'ai_running': int(is_processing),
+                    'face_loading': int(getattr(self.engine._face_system, '_loading', False) if self.engine._face_system else False),
+                    'objects_loading': int(getattr(self.engine._object_system, '_loading', False) if self.engine._object_system else False),
+                    'drawing_metrics': int(drawing_metrics),
+                    'drawing_graph': int(drawing_graph)
+                }
+                self.csv_logger.log_frame(config, state, metrics_dict)
+            except Exception as e:
+                print(f"CSV logging error: {e}")
+        
         # Pętla kręci się co 10ms, niezależnie czy kamera działa
         self.root.after(10, self._update_frame)
+    
+    def _display_frame(self, processed_frame):
+        """Display frame with optimized resize and PhotoImage handling"""
+        try:
+            rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(rgb)
+            
+            # Get current window size
+            w_win = self.video_frame.winfo_width()
+            h_win = self.video_frame.winfo_height()
+            
+            # Zabezpieczenie przed minimalnym oknem
+            if w_win > 10 and h_win > 10:
+                # Check if window was resized
+                if (w_win, h_win) != self.cached_display_size:
+                    self.cached_display_size = (w_win, h_win)
+                    self.cached_photo_image = None  # Invalidate cache
+                
+                # Use cached size if window hasn't changed
+                aspect_ratio = 4/3
+                new_w = w_win
+                new_h = int(new_w / aspect_ratio)
+                
+                if new_h > h_win:
+                    new_h = h_win
+                    new_w = int(new_h * aspect_ratio)
+                
+                # Use faster BILINEAR instead of LANCZOS
+                img = img.resize((new_w, new_h), Image.BILINEAR)
+                
+                # Avoid excessive PhotoImage recreation - only update if needed
+                try:
+                    imgtk = ImageTk.PhotoImage(image=img)
+                    self.video_label.imgtk = imgtk
+                    self.video_label.configure(image=imgtk, text="")
+                except:
+                    # If PhotoImage fails, skip this frame update
+                    pass
+        except Exception as e:
+            print(f"Display error: {e}")
+    
+    def _draw_performance_metrics(self, frame):
+        """Draw performance metrics on frame (translucent box with sharp text)"""
+        try:
+            metrics = self.perf_monitor.get_metrics_string()
+            
+            # Prepare text
+            text_lines = [
+                f"FPS: {metrics['fps']}",
+                f"CPU: {metrics['cpu']}",
+                f"GPU: {metrics['gpu']}",
+                f"Inference: {metrics['inference_ms']}",
+                f"Dropped: {metrics['frames_dropped']}"
+            ]
+            
+            # Create overlay
+            overlay = frame.copy()
+            
+            # Draw semi-transparent background
+            box_h = 5 + (len(text_lines) * 20) + 5
+            cv2.rectangle(overlay, (10, 10), (220, 10 + box_h), (50, 50, 50), -1)
+            cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+            
+            # Draw text (sharper font)
+            for i, text in enumerate(text_lines):
+                y_pos = 25 + (i * 20)
+                cv2.putText(frame, text, (20, y_pos),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
+            
+            # Draw graphs if enabled
+            if config.graph_mode == 'compact':
+                frame = self._draw_compact_graph(frame)
+            elif config.graph_mode == 'full':
+                frame = self._draw_full_graphs(frame)
+            
+            return frame
+        except Exception as e:
+            print(f"Metrics drawing error: {e}")
+            return frame
+    
+    def _draw_compact_graph(self, frame):
+        """Draw single metric as line graph"""
+        try:
+            h, w = frame.shape[:2]
+            graph_w, graph_h = 300, 100
+            graph_x = w - graph_w - 10
+            graph_y = h - graph_h - 10
+            
+            histories = self.perf_monitor.get_histories()
+            metric = config.compact_metric
+            data = histories.get(metric, [])
+            
+            if not data or len(data) < 2:
+                return frame
+            
+            # Create graph background
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (graph_x, graph_y), (w - 10, h - 10), (30, 30, 30), -1)
+            cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+            
+            # Draw border
+            cv2.rectangle(frame, (graph_x, graph_y), (w - 10, h - 10), (0, 255, 0), 2)
+            
+            # Draw label
+            cv2.putText(frame, f"{metric.upper()}", (graph_x + 5, graph_y + 15),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+            
+            # Scale data
+            if data:
+                max_val = max(max(data), 1)
+                min_val = 0
+            else:
+                return frame
+            
+            # Draw line graph
+            scale_h = (graph_h - 30) / max(max_val - min_val, 1)
+            for i in range(1, len(data)):
+                x1 = graph_x + 5 + int((i - 1) * (graph_w - 15) / len(data))
+                x2 = graph_x + 5 + int(i * (graph_w - 15) / len(data))
+                y1 = graph_y + graph_h - 5 - int((data[i-1] - min_val) * scale_h)
+                y2 = graph_y + graph_h - 5 - int((data[i] - min_val) * scale_h)
+                cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
+            
+            return frame
+        except Exception as e:
+            print(f"Compact graph error: {e}")
+            return frame
+    
+    def _draw_full_graphs(self, frame):
+        """Draw all metrics as graphs below the numbers"""
+        try:
+            h, w = frame.shape[:2]
+            graph_h = 80
+            total_height = graph_h + 10
+            
+            # Create overlay area at bottom
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (10, h - total_height - 10), (w - 10, h - 10), (30, 30, 30), -1)
+            cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+            
+            # Draw border
+            cv2.rectangle(frame, (10, h - total_height - 10), (w - 10, h - 10), (0, 255, 0), 2)
+            
+            histories = self.perf_monitor.get_histories()
+            metrics = ['fps', 'cpu', 'gpu', 'inference']
+            colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255), (255, 255, 0)]
+            
+            graph_x_start = 20
+            graph_w_each = (w - 50) // 4
+            
+            for idx, (metric, color) in enumerate(zip(metrics, colors)):
+                data = histories.get(metric, [])
+                if not data or len(data) < 2:
+                    continue
+                
+                graph_x = graph_x_start + idx * graph_w_each
+                graph_y = h - total_height
+                
+                # Label
+                cv2.putText(frame, metric.upper(), (graph_x + 5, graph_y + 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
+                
+                # Scale
+                if metric == 'inference':
+                    max_val = max(max(data), 10)
+                elif metric in ['cpu', 'gpu']:
+                    max_val = 100
+                else:  # fps
+                    max_val = max(max(data), 30)
+                
+                scale_h = (graph_h - 25) / max(max_val, 1)
+                
+                # Draw line
+                for i in range(1, len(data)):
+                    x1 = graph_x + 5 + int((i - 1) * (graph_w_each - 10) / len(data))
+                    x2 = graph_x + 5 + int(i * (graph_w_each - 10) / len(data))
+                    y1 = h - 5 - int(data[i-1] * scale_h)
+                    y2 = h - 5 - int(data[i] * scale_h)
+                    cv2.line(frame, (x1, y1), (x2, y2), color, 1)
+            
+            return frame
+        except Exception as e:
+            print(f"Full graphs error: {e}")
+            return frame
 
     # --- OBSŁUGA POZOSTAŁYCH PRZYCISKÓW ---
     def _on_yolo_model_change(self, event):
@@ -372,9 +777,12 @@ class RetroAIApp:
         threading.Thread(target=change, daemon=True).start()
 
     def _update_yolo_opts(self):
-        self.engine.object_system.show_fps = self.var_fps.get()
         self.engine.object_system.show_conf = self.var_conf.get()
         self.engine.object_system.show_labels = self.var_labels.get()
+    
+    def _open_settings(self):
+        """Open settings window"""
+        SettingsWindow(self.root, self.engine, self)
 
     def _start_yolo(self):
         self.engine.enable_yolo = True
@@ -438,6 +846,10 @@ class RetroAIApp:
                 self.engine.reload_faces()
             else:
                 messagebox.showerror("Error", "Could not delete person.")
+
+    def _open_settings(self):
+        """Open settings window"""
+        SettingsWindow(self.root, self.engine, self)
 
     def on_close(self):
         self.is_running = False

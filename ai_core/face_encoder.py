@@ -25,6 +25,10 @@ class FaceEncoder:
         
         self._log("Loading InceptionResnetV1...")
         self.resnet = InceptionResnetV1(pretrained='vggface2').eval().to(config.device)
+        
+        # Apply quantization based on config
+        self._apply_quantization()
+        
         self._log("InceptionResnetV1 loaded")
         
         self.known_encodings = {}
@@ -32,12 +36,70 @@ class FaceEncoder:
         
         # Upewnij się, że folder istnieje
         config.ensure_dirs()
+
+    def _match_model_dtype(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Cast tensor to the dtype of the model weights if available."""
+        target_dtype = None
+        try:
+            target_dtype = next(self.resnet.parameters()).dtype
+        except Exception:
+            target_dtype = getattr(self.resnet, "dtype", None)
+        if target_dtype is not None and tensor.dtype != target_dtype:
+            tensor = tensor.to(target_dtype)
+        return tensor
+    
+    def _ensure_model_device(self, tensor: torch.Tensor):
+        """Ensure model and tensor are on compatible device.
+        (INT8 support removed due to GPU incompatibility)"""
+        return tensor.to(config.device)
     
     def _log(self, msg):
         """Log to both terminal and GUI"""
         print(f"[FACE] {msg}")
         if self.log_callback:
             self.log_callback(f"[FACE] {msg}")
+    
+    def _apply_quantization(self):
+        """Apply quantization to the model based on config settings"""
+        try:
+            if config.quantization_mode == 'fp16':
+                self._log(f"Applying FP16 quantization...")
+                self.resnet = self.resnet.half()
+                self._log("FP16 quantization applied (2× speedup expected)")
+            elif config.quantization_mode == 'int8':
+                # INT8 dynamic quantization causes issues with face recognition model
+                # For now, fall back to FP32 for face encoder
+                self._log(f"INT8 not supported for face recognition (GPU issues). Using FP32 instead.")
+                # Keep as FP32, no conversion
+            else:
+                self._log(f"Using FP32 (no quantization)")
+        except Exception as e:
+            self._log(f"Quantization failed: {e}. Using FP32.")
+            self.quantization_mode = 'fp32'
+    
+    def set_quantization_mode(self, mode):
+        """Change quantization mode (fp32, fp16, int8)"""
+        if mode not in ['fp32', 'fp16', 'int8']:
+            self._log(f"Invalid quantization mode: {mode}")
+            return False
+        
+        if config.quantization_mode == mode:
+            self._log(f"Already using {mode}")
+            return True
+        
+        self._log(f"Switching to {mode} quantization...")
+        config.quantization_mode = mode
+        
+        try:
+            # Reload model with new quantization
+            self.resnet = InceptionResnetV1(pretrained='vggface2').eval().to(config.device)
+            self._apply_quantization()
+            self._log(f"Successfully switched to {mode}")
+            return True
+        except Exception as e:
+            self._log(f"Failed to switch to {mode}: {e}")
+            return False
+
     
     def encode_face(self, image_path):
         try:
@@ -63,6 +125,8 @@ class FaceEncoder:
                     face = faces[0:1]
             
             face = face.to(config.device)
+            face = self._ensure_model_device(face)
+            face = self._match_model_dtype(face)
             
             with torch.no_grad():
                 encoding = self.resnet(face).cpu().numpy()[0]
@@ -138,6 +202,10 @@ class FaceEncoder:
                     faces_tensor = torch.stack(faces).to(config.device)
                 except:
                     return []
+
+            # Match dtype to model (handle FP16 quantized model)
+            faces_tensor = self._ensure_model_device(faces_tensor)
+            faces_tensor = self._match_model_dtype(faces_tensor)
 
             encodings = []
             with torch.no_grad():

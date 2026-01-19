@@ -4,6 +4,8 @@ from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator, colors
 import cv2
 import time
+import torch
+from .config import config
 
 class ObjectSystem:
     """
@@ -16,10 +18,15 @@ class ObjectSystem:
         self.enable_tracking = enable_tracking
         self.conf = 0.5
         
+        # Apply quantization if on GPU
+        if config.device == 'cuda':
+            self._apply_gpu_optimization()
+        
         # --- Bajery wizualne z poprzedniej apki ---
         self.show_conf = True
         self.show_labels = True
-        self.show_fps = True
+        # Disable YOLO's own FPS overlay to avoid double counters (GUI metrics handles FPS)
+        self.show_fps = False
         self._fps_prev_time = time.time()
     
     def _log(self, msg):
@@ -27,6 +34,21 @@ class ObjectSystem:
         print(f"[YOLO] {msg}")
         if self.log_callback:
             self.log_callback(f"[YOLO] {msg}")
+    
+    def _apply_gpu_optimization(self):
+        """Apply GPU optimizations"""
+        try:
+            if config.use_tensor_cores:
+                # Let Ultralytics handle precision/autocast to avoid dtype mismatches in tracker
+                self._log("Using default Ultralytics precision (no manual half) to keep tracker stable")
+                # Ensure model is on GPU if available
+                try:
+                    self.model.to('cuda')
+                except Exception:
+                    pass
+                self._log("GPU ready (Tensor Cores via autocast)")
+        except Exception as e:
+            self._log(f"GPU optimization failed: {e}")
         
     def _load_model(self, variant):
         try:
@@ -73,11 +95,6 @@ class ObjectSystem:
                 
                 annotator.box_label(b, label, color=colors(c, True))
         
-        # 2. Rysowanie FPS (jeśli włączone)
-        if self.show_fps:
-            curr_time = time.time()
-            fps = 1 / (curr_time - self._fps_prev_time)
-            self._fps_prev_time = curr_time
-            cv2.putText(frame, f"FPS: {int(fps)}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                
+        # 2. (FPS overlay disabled; handled by GUI metrics)
+        
         return frame

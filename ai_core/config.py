@@ -17,6 +17,20 @@ class Config:
         self.image_size = 160
         self.margin = 20
         
+        # GPU Optimization Settings
+        self.quantization_mode = 'fp16'  # 'fp32', 'fp16', 'int8'
+        self.use_tensor_cores = True
+        self.optimize_memory = False
+        
+        # Performance Monitoring
+        self.show_performance_metrics = True
+        self.graph_mode = 'off'  # 'off', 'compact', 'full'
+        self.compact_metric = 'fps'  # 'fps', 'cpu', 'gpu', 'inference'
+        
+        # CSV Logging (for debugging performance impact of display)
+        self.enable_csv_logging = False
+        self.csv_log_path = self.project_root / "performance_debug.csv"
+        
     def _log(self, msg):
         """Log to both terminal and GUI callback if available"""
         print(msg)
