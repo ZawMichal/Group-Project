@@ -41,9 +41,9 @@ wheels/
 
 # AI Models (later we will need to decide on which one we will be using)
 # Uncomment to ignore all model files:
-# *.pt
-# *.pth
-# *.onnx
+*.pt
+*.pth
+*.onnx
 
 # Known faces database (currently it will spam the project files. we will need to redesign the db so it can be more light weight)
 known_faces/
