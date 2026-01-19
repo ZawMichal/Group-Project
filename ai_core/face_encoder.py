@@ -3,7 +3,7 @@ import os
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
 import numpy as np
-from .config import config  # Zmieniono import na relatywny
+from .config import config 
 
 class FaceEncoder:
     def __init__(self, log_callback=None):
