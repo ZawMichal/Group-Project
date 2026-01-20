@@ -1,21 +1,36 @@
+# Dokumentacja techniczna GUI (tkinter)
+
+Poniżej znajduje się pełny opis **100% kodu** pliku gui_app.py, z podziałem na funkcjonalności i z blokami kodu.
+
+---
+
+## Importy i zależności
+**Cel:** przygotowanie bibliotek GUI, obrazu, wątków, czasu oraz modułów AI i monitoringu.
+
+```python
 import tkinter as tk
 from tkinter import ttk, messagebox
 import cv2
-import numpy as np
 from PIL import Image, ImageTk
 import threading
 import time
 import datetime
 import psutil
-import sys
-import traceback
-import csv
-from pathlib import Path
 
 from ai_core.engine import AIEngine
 from ai_core.config import config
 from ai_core.performance_monitor import PerformanceMonitor
+```
 
+---
+
+## Klasa SettingsWindow (blok ustawień)
+**Cel:** okno ustawień dotyczące optymalizacji GPU, monitoringu i logowania.
+
+### Inicjalizacja okna
+Tworzy okno podrzędne, ustawia rozmiar, blokuje interakcje z oknem głównym i uruchamia zakładki.
+
+```python
 class SettingsWindow:
     """Settings popup window for GPU optimization and performance tuning"""
     def __init__(self, parent, engine, main_app):
@@ -31,7 +46,12 @@ class SettingsWindow:
         self.window.grab_set()
         
         self.create_tabs()
-    
+```
+
+### Zakładki i przyciski
+Tworzy `Notebook` z trzema zakładkami oraz przyciski „Apply” i „Close”.
+
+```python
     def create_tabs(self):
         """Create notebook with tabs"""
         notebook = ttk.Notebook(self.window)
@@ -51,11 +71,6 @@ class SettingsWindow:
         display_frame = ttk.Frame(notebook)
         notebook.add(display_frame, text="Display")
         self.create_display_tab(display_frame)
-
-        # Detection Tab
-        detection_frame = ttk.Frame(notebook)
-        notebook.add(detection_frame, text="Detection")
-        self.create_detection_tab(detection_frame)
         
         # Buttons
         button_frame = tk.Frame(self.window)
@@ -65,7 +80,12 @@ class SettingsWindow:
              bg="#27ae60", fg="white", width=10).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Close", command=self.window.destroy,
              bg="#95a5a6", fg="white", width=10).pack(side=tk.LEFT, padx=5)
-    
+```
+
+### Zakładka GPU
+Ustawia tryb precyzji (FP32/FP16/INT8) i opcje GPU (Tensor Cores, układ pamięci).
+
+```python
     def create_gpu_tab(self, parent):
         """GPU Optimization settings"""
         frame = ttk.LabelFrame(parent, text="GPU Precision Mode", padding=10)
@@ -73,15 +93,12 @@ class SettingsWindow:
         
         self.quantization_var = tk.StringVar(value=config.quantization_mode)
         
-        rb_fp32 = ttk.Radiobutton(frame, text="FP32 (Full Precision) - Slower, Most Accurate", 
-                   variable=self.quantization_var, value="fp32")
-        rb_fp32.pack(anchor=tk.W, pady=5)
-        rb_fp16 = ttk.Radiobutton(frame, text="FP16 (Half Precision) - 2× Faster, <0.5% Accuracy Loss", 
-                   variable=self.quantization_var, value="fp16")
-        rb_fp16.pack(anchor=tk.W, pady=5)
-        rb_int8 = ttk.Radiobutton(frame, text="INT8 (8-bit Quantization) - 3-4× Faster, 1-2% Accuracy Loss", 
-                   variable=self.quantization_var, value="int8")
-        rb_int8.pack(anchor=tk.W, pady=5)
+        ttk.Radiobutton(frame, text="FP32 (Full Precision) - Slower, Most Accurate", 
+                       variable=self.quantization_var, value="fp32").pack(anchor=tk.W, pady=5)
+        ttk.Radiobutton(frame, text="FP16 (Half Precision) - 2× Faster, <0.5% Accuracy Loss", 
+                       variable=self.quantization_var, value="fp16").pack(anchor=tk.W, pady=5)
+        ttk.Radiobutton(frame, text="INT8 (8-bit Quantization) - 3-4× Faster, 1-2% Accuracy Loss", 
+                       variable=self.quantization_var, value="int8").pack(anchor=tk.W, pady=5)
         
         info_label = tk.Label(frame, text="Note: Changing this requires reloading face recognition models.\nWill restart face system on Apply.",
                             bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8), justify=tk.LEFT, wraplength=450)
@@ -92,21 +109,18 @@ class SettingsWindow:
         frame2.pack(fill=tk.BOTH, padx=10, pady=10)
         
         self.tensor_cores_var = tk.BooleanVar(value=config.use_tensor_cores)
-        cb_tensor = ttk.Checkbutton(frame2, text="Enable Tensor Cores (if available)", 
-                       variable=self.tensor_cores_var)
-        cb_tensor.pack(anchor=tk.W, pady=5)
+        ttk.Checkbutton(frame2, text="Enable Tensor Cores (if available)", 
+                       variable=self.tensor_cores_var).pack(anchor=tk.W, pady=5)
         
         self.optimize_mem_var = tk.BooleanVar(value=config.optimize_memory)
-        cb_mem = ttk.Checkbutton(frame2, text="Optimize Memory Layout", 
-                       variable=self.optimize_mem_var)
-        cb_mem.pack(anchor=tk.W, pady=5)
+        ttk.Checkbutton(frame2, text="Optimize Memory Layout", 
+                       variable=self.optimize_mem_var).pack(anchor=tk.W, pady=5)
+```
 
-        if config.device == 'cpu':
-            for w in (rb_fp32, rb_fp16, rb_int8, cb_tensor, cb_mem):
-                w.configure(state=tk.DISABLED)
-            tk.Label(frame2, text="GPU settings disabled on CPU",
-                     bg="#ecf0f1", fg="#7f8c8d", font=("Arial", 8)).pack(anchor=tk.W, pady=(5, 0))
-    
+### Zakładka Performance
+Włącza/wyłącza metryki i wybór trybu wykresów (off/compact/full).
+
+```python
     def create_performance_tab(self, parent):
         """Performance monitoring settings"""
         frame = ttk.LabelFrame(parent, text="Performance Monitoring", padding=10)
@@ -134,7 +148,7 @@ class SettingsWindow:
         ttk.Label(compact_frame, text="Compact metric:").pack(side=tk.LEFT)
         self.compact_metric_var = tk.StringVar(value=config.compact_metric)
         metric_combo = ttk.Combobox(compact_frame, textvariable=self.compact_metric_var,
-                       values=["fps", "inference"],
+                                   values=["fps", "cpu", "gpu", "inference"],
                                    width=12, state="readonly")
         metric_combo.pack(side=tk.LEFT, padx=5)
         
@@ -146,7 +160,12 @@ class SettingsWindow:
         device_label = tk.Label(frame3, text=device_text, bg="#ecf0f1", fg="#212529",
                                font=("Consolas", 9), justify=tk.LEFT)
         device_label.pack(pady=10)
-    
+```
+
+### Zakładka Display
+Włącza/wyłącza CSV logging z metrykami i stanem silników.
+
+```python
     def create_display_tab(self, parent):
         """Display and UI settings"""
         frame = ttk.LabelFrame(parent, text="Display Options", padding=10)
@@ -161,32 +180,12 @@ class SettingsWindow:
         
         ttk.Label(frame, text="Logs configuration, AI state, and performance metrics\nto debug if display affects performance.",
                  font=("Arial", 8), foreground="gray").pack(anchor=tk.W, pady=(0, 15))
+```
 
-    def create_detection_tab(self, parent):
-        """Detection thresholds settings"""
-        frame = ttk.LabelFrame(parent, text="Detection Thresholds", padding=10)
-        frame.pack(fill=tk.BOTH, padx=10, pady=10)
+### Zastosowanie ustawień
+Aktualizuje konfigurację, włącza/wyłącza CSV logger oraz przeładowuje system twarzy przy zmianie kwantyzacji.
 
-        # YOLO threshold
-        ttk.Label(frame, text="YOLO confidence threshold:").grid(row=0, column=0, sticky="w", pady=5)
-        self.yolo_conf_var = tk.DoubleVar(value=config.yolo_confidence_threshold)
-        ttk.Spinbox(frame, from_=0.0, to=1.0, increment=0.05, textvariable=self.yolo_conf_var, width=6).grid(row=0, column=1, sticky="w", padx=5)
-
-        # Face detection threshold (MTCNN)
-        ttk.Label(frame, text="Face detection threshold:").grid(row=1, column=0, sticky="w", pady=5)
-        self.face_det_var = tk.DoubleVar(value=config.detection_threshold)
-        ttk.Spinbox(frame, from_=0.0, to=1.0, increment=0.05, textvariable=self.face_det_var, width=6).grid(row=1, column=1, sticky="w", padx=5)
-
-        # Face recognition threshold
-        ttk.Label(frame, text="Face recognition threshold:").grid(row=2, column=0, sticky="w", pady=5)
-        self.face_conf_var = tk.DoubleVar(value=config.confidence_threshold)
-        ttk.Spinbox(frame, from_=0.0, to=1.0, increment=0.05, textvariable=self.face_conf_var, width=6).grid(row=2, column=1, sticky="w", padx=5)
-
-        # Top-K labels
-        ttk.Label(frame, text="Top labels (1-3):").grid(row=3, column=0, sticky="w", pady=5)
-        self.face_topk_var = tk.IntVar(value=getattr(config, 'face_top_k', 1))
-        ttk.Spinbox(frame, from_=1, to=3, increment=1, textvariable=self.face_topk_var, width=6).grid(row=3, column=1, sticky="w", padx=5)
-    
+```python
     def apply_settings(self):
         """Apply all settings"""
         new_quantization = self.quantization_var.get()
@@ -194,18 +193,8 @@ class SettingsWindow:
         config.use_tensor_cores = self.tensor_cores_var.get()
         config.optimize_memory = self.optimize_mem_var.get()
         config.graph_mode = self.graph_mode_var.get()
-        config.compact_metric = self.compact_metric_var.get() if self.compact_metric_var.get() in ['fps', 'inference'] else 'fps'
+        config.compact_metric = self.compact_metric_var.get()
         config.enable_csv_logging = self.enable_csv_logging_var.get()
-
-        # Detection thresholds
-        config.yolo_confidence_threshold = float(self.yolo_conf_var.get())
-        config.detection_threshold = float(self.face_det_var.get())
-        config.confidence_threshold = float(self.face_conf_var.get())
-        config.face_top_k = int(self.face_topk_var.get())
-
-        # Apply YOLO threshold immediately if already loaded
-        if getattr(self.engine, "_object_system", None) is not None:
-            self.engine._object_system.conf = config.yolo_confidence_threshold
         
         # Start/stop CSV logging if needed
         if config.enable_csv_logging and not hasattr(self.main_app, 'csv_logger'):
@@ -235,7 +224,12 @@ class SettingsWindow:
             threading.Thread(target=reload_faces, daemon=True).start()
         
         self.window.destroy()
-    
+```
+
+### Reset ustawień
+Przywraca wartości domyślne w GUI.
+
+```python
     def reset_to_defaults(self):
         """Reset to default settings"""
         self.quantization_var.set("fp16")
@@ -245,11 +239,17 @@ class SettingsWindow:
         self.graph_mode_var.set("off")
         self.compact_metric_var.set("fps")
         self.enable_csv_logging_var.set(False)
-        self.yolo_conf_var.set(0.5)
-        self.face_det_var.set(0.9)
-        self.face_conf_var.set(0.6)
-        self.face_topk_var.set(1)
+```
 
+---
+
+## Klasa AIVisionAPP (główna aplikacja)
+**Cel:** tworzy okno, panele, obsługuje kamerę, AI, bazę osób, metryki i wyświetlanie.
+
+### Inicjalizacja i stan aplikacji (blok główny okna)
+Ustawia tytuł, rozmiar okna, tworzy monitor wydajności, inicjuje AI i uruchamia pętlę odświeżania.
+
+```python
 class AIVisionAPP:
     def __init__(self, root):
         self.root = root
@@ -267,29 +267,12 @@ class AIVisionAPP:
 
         # Clear previous CSV log on each app run for fresh captures
         self._clear_csv_log()
-
-        # Detection logging & recording
-        self.detections_dir = config.detections_dir
-        self.detections_dir.mkdir(parents=True, exist_ok=True)
-        self.detections_csv_path = config.detections_csv_path
-        self._ensure_detection_log()
-        self.recording_active = False
-        self.video_writer = None
-        self.current_evidence_file = None
         
         self.create_ui()
         
         self._log("Initializing AI Engine...")
         self.engine = AIEngine(log_callback=self._log)
         self._log("AI Engine initialized successfully")
-
-        # Runtime diagnostics
-        try:
-            self._log(f"Python exe: {sys.executable}")
-            self._log(f"NumPy: {np.__version__}")
-            self._log(f"OpenCV: {cv2.__version__}")
-        except Exception as e:
-            self._log(f"Diagnostics error: {e}")
         
         self.engine.enable_yolo = False
         self.engine.enable_faces = False
@@ -305,7 +288,12 @@ class AIVisionAPP:
         
         # Uruchamiamy główną pętlę odświeżania GUI (nawet jak nie ma kamery)
         self._update_frame()
+```
 
+### Budowa interfejsu (blok głównego okna)
+Tworzy nagłówek, panel lewy z kartami i panel prawy z podglądem wideo.
+
+```python
     def create_ui(self):
         # 1. HEADER
         title_frame = tk.Frame(self.root, bg="#2c3e50", height=70)
@@ -361,7 +349,12 @@ class AIVisionAPP:
         self.create_face_rec_card()
         self.create_database_card()
         self.create_metrics_card()
+```
 
+### Generator kart UI (wspólny element dla paneli)
+Zapewnia spójny wygląd kart w lewym panelu.
+
+```python
     def create_card_frame(self, title, description):
         card = tk.Frame(self.scrollable_frame, bg="#ffffff", relief=tk.RAISED, bd=2)
         card.pack(fill=tk.X, pady=8, ipadx=5, ipady=5)
@@ -381,8 +374,15 @@ class AIVisionAPP:
         controls.pack(fill=tk.X)
         
         return controls
+```
 
-    # --- MODUŁY ---
+---
+
+## Blok łączenia z kamerą
+### UI kamery
+Tworzy wybór ID kamery i przycisk „Connect”.
+
+```python
     def create_camera_card(self):
         content = self.create_card_frame("Camera Source", "Set camera device ID")
         
@@ -399,163 +399,13 @@ class AIVisionAPP:
         
         self.camera_status = tk.Label(content, text="Status: Idle", bg="white", fg="#7f8c8d")
         self.camera_status.pack(side=tk.LEFT, padx=10)
+```
 
-    def create_yolo_card(self):
-        content = self.create_card_frame("YOLO Detection", "Real-time object detection")
-        
-        opts_frame = tk.Frame(content, bg="white")
-        opts_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(opts_frame, text="Model:", bg="white").pack(side=tk.LEFT)
-        self.yolo_model_var = tk.StringVar(value="yolo11n")
-        self.yolo_combo = ttk.Combobox(opts_frame, textvariable=self.yolo_model_var, 
-                                       values=["yolo11n", "yolo11s", "yolo11m", "yolo11l", "yolo11x"], 
-                                       width=10, state="readonly")
-        self.yolo_combo.pack(side=tk.LEFT, padx=5)
-        self.yolo_combo.bind("<<ComboboxSelected>>", self._on_yolo_model_change)
-        
-        checks_frame = tk.Frame(content, bg="white")
-        checks_frame.pack(fill=tk.X)
-        
-        self.var_conf = tk.BooleanVar(value=True)
-        self.var_labels = tk.BooleanVar(value=True)
-        self.var_warnings = tk.BooleanVar(value=config.show_yolo_warnings)
-        
-        tk.Checkbutton(checks_frame, text="Conf", variable=self.var_conf, command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
-        tk.Checkbutton(checks_frame, text="Labels", variable=self.var_labels, command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
-        tk.Checkbutton(checks_frame, text="Warnings", variable=self.var_warnings, command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
+### Kliknięcie Connect (co się dzieje)
+- Pobiera ID z `Spinbox`.
+- Uruchamia osobny wątek, aby GUI nie zamarzło.
 
-        btn_frame = tk.Frame(content, bg="white", pady=10)
-        btn_frame.pack(fill=tk.X)
-        
-        self.btn_yolo_run = tk.Button(btn_frame, text="▶ Run", command=self._start_yolo, 
-                                      bg="#27ae60", fg="white", font=("Arial", 10, "bold"), width=8)
-        self.btn_yolo_run.pack(side=tk.LEFT, padx=2)
-        
-        self.btn_yolo_stop = tk.Button(btn_frame, text="⏹ Stop", command=self._stop_yolo, 
-                                       bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), width=8, state=tk.DISABLED)
-        self.btn_yolo_stop.pack(side=tk.LEFT, padx=2)
-
-    def create_face_rec_card(self):
-        content = self.create_card_frame("Face Recognition", "Detect and identify people")
-        tk.Label(content, text="Uses Facenet Pytorch & MTCNN", bg="white", fg="gray").pack(anchor=tk.W)
-
-        btn_frame = tk.Frame(content, bg="white", pady=10)
-        btn_frame.pack(fill=tk.X)
-        
-        self.btn_face_run = tk.Button(btn_frame, text="▶ Run", command=self._start_face, 
-                                      bg="#27ae60", fg="white", font=("Arial", 10, "bold"), width=8)
-        self.btn_face_run.pack(side=tk.LEFT, padx=2)
-        
-        self.btn_face_stop = tk.Button(btn_frame, text="⏹ Stop", command=self._stop_face, 
-                                       bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), width=8, state=tk.DISABLED)
-        self.btn_face_stop.pack(side=tk.LEFT, padx=2)
-
-        # Blacklist filter
-        self.var_blacklist_filter = tk.BooleanVar(value=config.show_blacklist_alerts)
-        tk.Checkbutton(content, text="Black list filter", variable=self.var_blacklist_filter,
-                   command=self._update_face_opts, bg="white").pack(anchor=tk.W, pady=(5, 0))
-
-    def create_database_card(self):
-        content = self.create_card_frame("Database Manager", "Add/Remove faces")
-        
-        tk.Label(content, text="Add Person:", font=("Arial", 9, "bold"), bg="white").pack(anchor=tk.W, pady=(5,0))
-        cap_frame = tk.Frame(content, bg="white")
-        cap_frame.pack(fill=tk.X)
-        
-        self.entry_name = tk.Entry(cap_frame, width=15)
-        self.entry_name.pack(side=tk.LEFT, padx=(0,5))
-        
-        self.btn_capture = tk.Button(cap_frame, text="📸 Capture", command=self._toggle_capture, 
-                                     bg="#3498db", fg="white")
-        self.btn_capture.pack(side=tk.LEFT)
-
-        tk.Frame(content, bg="#ecf0f1", height=1).pack(fill=tk.X, pady=10) 
-        
-        tk.Label(content, text="Manage People:", font=("Arial", 9, "bold"), bg="white").pack(anchor=tk.W)
-        del_frame = tk.Frame(content, bg="white")
-        del_frame.pack(fill=tk.X)
-        
-        self.people_list_var = tk.StringVar()
-        self.people_combo = ttk.Combobox(del_frame, textvariable=self.people_list_var, state="readonly", width=15)
-        self.people_combo.pack(side=tk.LEFT, padx=(0,5))
-        self.people_combo.bind("<<ComboboxSelected>>", self._on_person_selected)
-        
-        self.btn_delete = tk.Button(del_frame, text="🗑 Delete", command=self._delete_person, 
-                                    bg="#e67e22", fg="white")
-        self.btn_delete.pack(side=tk.LEFT)
-        
-        tk.Button(del_frame, text="🔄", command=self._refresh_db_list, relief=tk.FLAT, bg="white").pack(side=tk.LEFT)
-
-        # Blacklist toggle for selected person
-        blacklist_frame = tk.Frame(content, bg="white", pady=5)
-        blacklist_frame.pack(fill=tk.X)
-        self.blacklist_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(blacklist_frame, text="Black list", variable=self.blacklist_var,
-                   command=self._toggle_blacklist_status, bg="white").pack(anchor=tk.W)
-
-    def create_metrics_card(self):
-        content = self.create_card_frame("Display Metrics", "Quick toggle for on-screen performance overlay")
-        tk.Button(content, text="Metrics ON", command=lambda: self._set_metrics(True),
-                  bg="#27ae60", fg="white", relief=tk.FLAT).pack(side=tk.LEFT, padx=5)
-        tk.Button(content, text="Metrics OFF", command=lambda: self._set_metrics(False),
-                  bg="#e74c3c", fg="white", relief=tk.FLAT).pack(side=tk.LEFT, padx=5)
-
-    # --- LOGIKA ---
-
-    def _log(self, msg):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        print(f"[{timestamp}] {msg}")
-
-    def _set_metrics(self, enabled: bool):
-        config.show_performance_metrics = bool(enabled)
-        state = "enabled" if enabled else "disabled"
-        self._log(f"Performance metrics {state}")
-
-    def _clear_csv_log(self):
-        """Remove old performance_debug.csv at app start to avoid stale data"""
-        try:
-            if config.csv_log_path.exists():
-                config.csv_log_path.unlink()
-        except Exception as e:
-            self._log(f"Could not clear CSV log: {e}")
-
-    def _ensure_detection_log(self):
-        if not self.detections_csv_path.exists():
-            with open(self.detections_csv_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["timestamp", "alerts", "evidence_file"])
-
-    def _start_recording(self, frame, alerts_text):
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        evidence_name = f"evidence_{timestamp}.mp4"
-        evidence_path = self.detections_dir / evidence_name
-
-        h, w = frame.shape[:2]
-        fps = self.cap.get(cv2.CAP_PROP_FPS) if self.cap else 30
-        if not fps or fps <= 0:
-            fps = 30
-
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        self.video_writer = cv2.VideoWriter(str(evidence_path), fourcc, fps, (w, h))
-        self.recording_active = True
-        self.current_evidence_file = evidence_name
-
-        # Log detection start
-        with open(self.detections_csv_path, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow([datetime.datetime.now().isoformat(), alerts_text, evidence_name])
-
-    def _stop_recording(self):
-        if self.video_writer is not None:
-            try:
-                self.video_writer.release()
-            except Exception:
-                pass
-        self.video_writer = None
-        self.recording_active = False
-        self.current_evidence_file = None
-
+```python
     def _connect_camera(self):
         """Connect to manually selected camera ID"""
         try:
@@ -565,7 +415,14 @@ class AIVisionAPP:
         except ValueError:
             self._log("Invalid camera ID")
             self.camera_status.config(text="Status: Invalid ID", fg="#e74c3c")
+```
 
+### Fizyczne otwarcie kamery
+- Tworzy `cv2.VideoCapture`.
+- Sprawdza dostępność, ustawia bufor i autofocus.
+- Testuje odczyt klatki.
+
+```python
     def _start_camera_stream(self, idx):
         if self.cap: 
             self.cap.release()
@@ -622,7 +479,226 @@ class AIVisionAPP:
             if self.cap:
                 self.cap.release()
                 self.cap = None
+```
 
+---
+
+## Blok YOLO (detekcja obiektów)
+### UI YOLO
+Tworzy wybór modelu i opcje „Conf” oraz „Labels”.
+
+```python
+    def create_yolo_card(self):
+        content = self.create_card_frame("YOLO Detection", "Real-time object detection")
+        
+        opts_frame = tk.Frame(content, bg="white")
+        opts_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(opts_frame, text="Model:", bg="white").pack(side=tk.LEFT)
+        self.yolo_model_var = tk.StringVar(value="yolo11n")
+        self.yolo_combo = ttk.Combobox(opts_frame, textvariable=self.yolo_model_var, 
+                                       values=["yolo11n", "yolo11s", "yolo11m", "yolo11l", "yolo11x"], 
+                                       width=10, state="readonly")
+        self.yolo_combo.pack(side=tk.LEFT, padx=5)
+        self.yolo_combo.bind("<<ComboboxSelected>>", self._on_yolo_model_change)
+        
+        checks_frame = tk.Frame(content, bg="white")
+        checks_frame.pack(fill=tk.X)
+        
+        self.var_conf = tk.BooleanVar(value=True)
+        self.var_labels = tk.BooleanVar(value=True)
+        
+        tk.Checkbutton(checks_frame, text="Conf", variable=self.var_conf, command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
+        tk.Checkbutton(checks_frame, text="Labels", variable=self.var_labels, command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
+
+        btn_frame = tk.Frame(content, bg="white", pady=10)
+        btn_frame.pack(fill=tk.X)
+        
+        self.btn_yolo_run = tk.Button(btn_frame, text="▶ Run", command=self._start_yolo, 
+                                      bg="#27ae60", fg="white", font=("Arial", 10, "bold"), width=8)
+        self.btn_yolo_run.pack(side=tk.LEFT, padx=2)
+        
+        self.btn_yolo_stop = tk.Button(btn_frame, text="⏹ Stop", command=self._stop_yolo, 
+                                       bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), width=8, state=tk.DISABLED)
+        self.btn_yolo_stop.pack(side=tk.LEFT, padx=2)
+```
+
+### Zmiana modelu
+Zmiana w comboboxie odpala wątek, który przełącza model w silniku AI.
+
+```python
+    def _on_yolo_model_change(self, event):
+        model = self.yolo_model_var.get()
+        self._log(f"Loading YOLO model: {model}...")
+        def change():
+            success = self.engine.change_yolo_model(model)
+            if success: self.root.after(0, lambda: self._log(f"Model changed to {model}"))
+        threading.Thread(target=change, daemon=True).start()
+```
+
+### Przełączniki Conf i Labels
+Zmieniają parametry wizualizacji w systemie obiektów.
+
+```python
+    def _update_yolo_opts(self):
+        self.engine.object_system.show_conf = self.var_conf.get()
+        self.engine.object_system.show_labels = self.var_labels.get()
+```
+
+### Start/Stop YOLO
+Steruje flagą w silniku i stanami przycisków.
+
+```python
+    def _start_yolo(self):
+        self.engine.enable_yolo = True
+        self.btn_yolo_run.config(state=tk.DISABLED)
+        self.btn_yolo_stop.config(state=tk.NORMAL)
+        self.yolo_combo.config(state=tk.DISABLED)
+        self._log("YOLO Detection STARTED")
+
+    def _stop_yolo(self):
+        self.engine.enable_yolo = False
+        self.btn_yolo_run.config(state=tk.NORMAL)
+        self.btn_yolo_stop.config(state=tk.DISABLED)
+        self.yolo_combo.config(state="readonly")
+        self._log("YOLO Detection STOPPED")
+```
+
+---
+
+## Blok Face Recognition
+### UI i sterowanie
+Uruchamia i zatrzymuje rozpoznawanie twarzy.
+
+```python
+    def create_face_rec_card(self):
+        content = self.create_card_frame("Face Recognition", "Detect and identify people")
+        tk.Label(content, text="Uses Facenet Pytorch & MTCNN", bg="white", fg="gray").pack(anchor=tk.W)
+
+        btn_frame = tk.Frame(content, bg="white", pady=10)
+        btn_frame.pack(fill=tk.X)
+        
+        self.btn_face_run = tk.Button(btn_frame, text="▶ Run", command=self._start_face, 
+                                      bg="#27ae60", fg="white", font=("Arial", 10, "bold"), width=8)
+        self.btn_face_run.pack(side=tk.LEFT, padx=2)
+        
+        self.btn_face_stop = tk.Button(btn_frame, text="⏹ Stop", command=self._stop_face, 
+                                       bg="#e74c3c", fg="white", font=("Arial", 10, "bold"), width=8, state=tk.DISABLED)
+        self.btn_face_stop.pack(side=tk.LEFT, padx=2)
+
+    def _start_face(self):
+        self.engine.enable_faces = True
+        self.btn_face_run.config(state=tk.DISABLED)
+        self.btn_face_stop.config(state=tk.NORMAL)
+        self._log("Face Recognition STARTED")
+
+    def _stop_face(self):
+        self.engine.enable_faces = False
+        self.btn_face_run.config(state=tk.NORMAL)
+        self.btn_face_stop.config(state=tk.DISABLED)
+        self._log("Face Recognition STOPPED")
+```
+
+---
+
+## Blok bazy osób (dodawanie/usuwanie)
+### UI bazy
+Umożliwia dodawanie i usuwanie osób z bazy danych twarzy.
+
+```python
+    def create_database_card(self):
+        content = self.create_card_frame("Database Manager", "Add/Remove faces")
+        
+        tk.Label(content, text="Add Person:", font=("Arial", 9, "bold"), bg="white").pack(anchor=tk.W, pady=(5,0))
+        cap_frame = tk.Frame(content, bg="white")
+        cap_frame.pack(fill=tk.X)
+        
+        self.entry_name = tk.Entry(cap_frame, width=15)
+        self.entry_name.pack(side=tk.LEFT, padx=(0,5))
+        
+        self.btn_capture = tk.Button(cap_frame, text="📸 Capture", command=self._toggle_capture, 
+                                     bg="#3498db", fg="white")
+        self.btn_capture.pack(side=tk.LEFT)
+
+        tk.Frame(content, bg="#ecf0f1", height=1).pack(fill=tk.X, pady=10) 
+        
+        tk.Label(content, text="Manage People:", font=("Arial", 9, "bold"), bg="white").pack(anchor=tk.W)
+        del_frame = tk.Frame(content, bg="white")
+        del_frame.pack(fill=tk.X)
+        
+        self.people_list_var = tk.StringVar()
+        self.people_combo = ttk.Combobox(del_frame, textvariable=self.people_list_var, state="readonly", width=15)
+        self.people_combo.pack(side=tk.LEFT, padx=(0,5))
+        
+        self.btn_delete = tk.Button(del_frame, text="🗑 Delete", command=self._delete_person, 
+                                    bg="#e67e22", fg="white")
+        self.btn_delete.pack(side=tk.LEFT)
+        
+        tk.Button(del_frame, text="🔄", command=self._refresh_db_list, relief=tk.FLAT, bg="white").pack(side=tk.LEFT)
+```
+
+### Przełączanie trybu przechwytywania
+- Jeśli tryb nagrywania jest wyłączony, wymaga wpisania nazwy.
+- W trybie nagrywania zapisuje próbki w pętli `_update_frame()`.
+
+```python
+    def _toggle_capture(self):
+        if not self.recording_mode:
+            name = self.entry_name.get().strip()
+            if not name:
+                messagebox.showwarning("Input Error", "Please enter a name first!")
+                return
+            self.target_person_name = name
+            self.recording_mode = True
+            self.btn_capture.config(text="⏹ Stop Capture", bg="#e74c3c")
+            self.entry_name.config(state=tk.DISABLED)
+            self._log(f"Started capturing faces for: {name}")
+        else:
+            self.recording_mode = False
+            self.btn_capture.config(text="📸 Capture", bg="#3498db")
+            self.entry_name.config(state=tk.NORMAL)
+            self.target_person_name = ""
+            self._log("Capture finished.")
+            self._refresh_db_list()
+            self.engine.reload_faces()
+```
+
+### Usuwanie osoby
+Wywołuje metodę w managerze i odświeża bazę w UI.
+
+```python
+    def _delete_person(self):
+        name = self.people_list_var.get()
+        if not name: return
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete {name}?"):
+            success = self.engine.manager.delete_person(name)
+            if success:
+                self._log(f"Deleted person: {name}")
+                self._refresh_db_list()
+                self.engine.reload_faces()
+            else:
+                messagebox.showerror("Error", "Could not delete person.")
+```
+
+### Odświeżenie listy
+Synchronizuje listę osób z bazą.
+
+```python
+    def _refresh_db_list(self):
+        people = self.engine.manager.get_people_list()
+        self.people_combo['values'] = people
+        if people: self.people_combo.current(0)
+```
+
+---
+
+## Blok wyświetlania obrazu
+### Główna pętla (oryginalny lub przetworzony obraz)
+- Zczytuje klatki z kamery.
+- Jeśli AI włączone, przetwarza klatkę przez `self.engine.process_frame()`.
+- Jeśli AI wyłączone, wyświetla oryginalną klatkę.
+
+```python
     def _update_frame(self):
         """Główna pętla programu - Optimized with frame skipping and metrics"""
         if not self.is_running: return
@@ -637,16 +713,13 @@ class AIVisionAPP:
                     self.perf_monitor.mark_frame_dropped()
                     self.root.after(10, self._update_frame)
                     return
-
-                # Ensure numpy array for downstream OpenCV/PIL ops
-                frame = np.asarray(frame)
                 
-                # Resize only for processing (lower width = faster AI)
-                target_w = int(getattr(config, 'ai_process_width', 640))
+                # Resize only for display, not for processing
+                # Target: 640 width for balance between quality and performance
                 h, w = frame.shape[:2]
-                if target_w > 0 and w > target_w:
-                    scale = target_w / w
-                    process_frame = cv2.resize(frame, (target_w, int(h * scale)), interpolation=cv2.INTER_AREA)
+                if w > 800:
+                    scale = 640 / w
+                    process_frame = cv2.resize(frame, (640, int(h * scale)), interpolation=cv2.INTER_AREA)
                 else:
                     process_frame = frame
 
@@ -674,22 +747,6 @@ class AIVisionAPP:
                 # 3. Add performance metrics if enabled
                 if config.show_performance_metrics:
                     processed_frame = self._draw_performance_metrics(processed_frame)
-
-                # Detection logging + evidence recording
-                alerts = getattr(self.engine, "current_alerts", [])
-                alerts_text = "|".join(alerts)
-                if getattr(self.engine, "alert_active", False):
-                    if not self.recording_active:
-                        self._start_recording(processed_frame, alerts_text)
-                else:
-                    if self.recording_active:
-                        self._stop_recording()
-
-                if self.recording_active and self.video_writer is not None:
-                    try:
-                        self.video_writer.write(processed_frame)
-                    except Exception:
-                        pass
                 
                 # 4. Wyświetlanie (Optimized - Frame skipping and faster resize)
                 self.frame_skip_counter += 1
@@ -702,11 +759,13 @@ class AIVisionAPP:
             except Exception as e:
                 # Camera read error - likely camera disconnected
                 self._log(f"Camera error: {e}")
-                self._log(traceback.format_exc())
                 self.cap = None
         
         # Update system metrics periodically (every 250ms to avoid CPU spikes)
-        # System metrics update no longer needed for on-screen display
+        self.metrics_update_counter = getattr(self, 'metrics_update_counter', 0) + 1
+        if self.metrics_update_counter >= 25:  # ~250ms at 100Hz loop
+            self.metrics_update_counter = 0
+            threading.Thread(target=self.perf_monitor.update_system_metrics, daemon=True).start()
         
         self.perf_monitor.frame_end()
         
@@ -727,11 +786,16 @@ class AIVisionAPP:
         
         # Pętla kręci się co 10ms, niezależnie czy kamera działa
         self.root.after(10, self._update_frame)
-    
+```
+
+### Renderowanie klatki
+Konwertuje BGR→RGB, skaluje do okna, stosuje ImageTk i wyświetla.
+
+```python
     def _display_frame(self, processed_frame):
         """Display frame with optimized resize and PhotoImage handling"""
         try:
-            rgb = cv2.cvtColor(np.asarray(processed_frame), cv2.COLOR_BGR2RGB)
+            rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(rgb)
             
             # Get current window size
@@ -767,7 +831,41 @@ class AIVisionAPP:
                     pass
         except Exception as e:
             print(f"Display error: {e}")
-    
+```
+
+---
+
+## Blok metryk i wykresów
+### Logowanie i przełączanie metryk
+
+```python
+    def _log(self, msg):
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] {msg}")
+
+    def _set_metrics(self, enabled: bool):
+        config.show_performance_metrics = bool(enabled)
+        state = "enabled" if enabled else "disabled"
+        self._log(f"Performance metrics {state}")
+```
+
+### Czyszczenie logu CSV
+
+```python
+    def _clear_csv_log(self):
+        """Remove old performance_debug.csv at app start to avoid stale data"""
+        try:
+            if config.csv_log_path.exists():
+                config.csv_log_path.unlink()
+        except Exception as e:
+            self._log(f"Could not clear CSV log: {e}")
+```
+
+### Rysowanie metryk i wykresów
+- Nakładka tekstowa z metrykami.
+- Opcjonalne wykresy compact/full.
+
+```python
     def _draw_performance_metrics(self, frame):
         """Draw performance metrics on frame (translucent box with sharp text)"""
         try:
@@ -776,7 +874,10 @@ class AIVisionAPP:
             # Prepare text
             text_lines = [
                 f"FPS: {metrics['fps']}",
-                f"Inference: {metrics['inference_ms']}"
+                f"CPU: {metrics['cpu']}",
+                f"GPU: {metrics['gpu']}",
+                f"Inference: {metrics['inference_ms']}",
+                f"Dropped: {metrics['frames_dropped']}"
             ]
             
             # Create overlay
@@ -803,7 +904,9 @@ class AIVisionAPP:
         except Exception as e:
             print(f"Metrics drawing error: {e}")
             return frame
-    
+```
+
+```python
     def _draw_compact_graph(self, frame):
         """Draw single metric as line graph"""
         try:
@@ -813,7 +916,7 @@ class AIVisionAPP:
             graph_y = h - graph_h - 10
             
             histories = self.perf_monitor.get_histories()
-            metric = config.compact_metric if config.compact_metric in ['fps', 'inference'] else 'fps'
+            metric = config.compact_metric
             data = histories.get(metric, [])
             
             if not data or len(data) < 2:
@@ -851,7 +954,9 @@ class AIVisionAPP:
         except Exception as e:
             print(f"Compact graph error: {e}")
             return frame
-    
+```
+
+```python
     def _draw_full_graphs(self, frame):
         """Draw all metrics as graphs below the numbers"""
         try:
@@ -868,11 +973,11 @@ class AIVisionAPP:
             cv2.rectangle(frame, (10, h - total_height - 10), (w - 10, h - 10), (0, 255, 0), 2)
             
             histories = self.perf_monitor.get_histories()
-            metrics = ['fps', 'inference']
-            colors = [(0, 255, 0), (255, 255, 0)]
+            metrics = ['fps', 'cpu', 'gpu', 'inference']
+            colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255), (255, 255, 0)]
             
             graph_x_start = 20
-            graph_w_each = (w - 50) // 2
+            graph_w_each = (w - 50) // 4
             
             for idx, (metric, color) in enumerate(zip(metrics, colors)):
                 data = histories.get(metric, [])
@@ -889,6 +994,8 @@ class AIVisionAPP:
                 # Scale
                 if metric == 'inference':
                     max_val = max(max(data), 10)
+                elif metric in ['cpu', 'gpu']:
+                    max_val = 100
                 else:  # fps
                     max_val = max(max(data), 30)
                 
@@ -906,122 +1013,91 @@ class AIVisionAPP:
         except Exception as e:
             print(f"Full graphs error: {e}")
             return frame
+```
 
-    # --- OBSŁUGA POZOSTAŁYCH PRZYCISKÓW ---
-    def _on_yolo_model_change(self, event):
-        model = self.yolo_model_var.get()
-        self._log(f"Loading YOLO model: {model}...")
-        def change():
-            success = self.engine.change_yolo_model(model)
-            if success: self.root.after(0, lambda: self._log(f"Model changed to {model}"))
-        threading.Thread(target=change, daemon=True).start()
+---
 
-    def _update_yolo_opts(self):
-        self.engine.object_system.show_conf = self.var_conf.get()
-        self.engine.object_system.show_labels = self.var_labels.get()
-        config.show_yolo_warnings = self.var_warnings.get()
+## Blok ustawień (uruchomienie okna SettingsWindow)
+Wywoływany przyciskiem „Settings” w bloku kamery.
 
-    def _update_face_opts(self):
-        config.show_blacklist_alerts = self.var_blacklist_filter.get()
-    
+```python
     def _open_settings(self):
         """Open settings window"""
         SettingsWindow(self.root, self.engine, self)
+```
 
-    def _start_yolo(self):
-        self.engine.enable_yolo = True
-        self.btn_yolo_run.config(state=tk.DISABLED)
-        self.btn_yolo_stop.config(state=tk.NORMAL)
-        self.yolo_combo.config(state=tk.DISABLED)
-        self._log("YOLO Detection STARTED")
+**Uwaga:** w pliku metoda `_open_settings()` występuje dwa razy w tej samej klasie i obie wersje są identyczne. W praktyce ostatnia definicja nadpisuje poprzednią, więc zachowanie jest takie samo.
 
-    def _stop_yolo(self):
-        self.engine.enable_yolo = False
-        self.btn_yolo_run.config(state=tk.NORMAL)
-        self.btn_yolo_stop.config(state=tk.DISABLED)
-        self.yolo_combo.config(state="readonly")
-        self._log("YOLO Detection STOPPED")
+---
 
-    def _start_face(self):
-        self.engine.enable_faces = True
-        self.btn_face_run.config(state=tk.DISABLED)
-        self.btn_face_stop.config(state=tk.NORMAL)
-        self._log("Face Recognition STARTED")
+## Blok zamknięcia aplikacji
+Zatrzymuje pętlę i zwalnia kamerę.
 
-    def _stop_face(self):
-        self.engine.enable_faces = False
-        self.btn_face_run.config(state=tk.NORMAL)
-        self.btn_face_stop.config(state=tk.DISABLED)
-        self._log("Face Recognition STOPPED")
-
-    def _refresh_db_list(self):
-        people = self.engine.manager.get_people_list()
-        self.people_combo['values'] = people
-        if people:
-            self.people_combo.current(0)
-        self._on_person_selected(None)
-
-    def _on_person_selected(self, event):
-        name = self.people_list_var.get()
-        if not name:
-            self.blacklist_var.set(False)
-            return
-        self.blacklist_var.set(self.engine.manager.get_blacklist_status(name))
-
-    def _toggle_blacklist_status(self):
-        name = self.people_list_var.get()
-        if not name:
-            return
-        new_status = bool(self.blacklist_var.get())
-        if self.engine.manager.set_blacklist_status(name, new_status):
-            state = "BLACKLISTED" if new_status else "REMOVED FROM BLACKLIST"
-            self._log(f"{name}: {state}")
-
-    def _toggle_capture(self):
-        if not self.recording_mode:
-            name = self.entry_name.get().strip()
-            if not name:
-                messagebox.showwarning("Input Error", "Please enter a name first!")
-                return
-            self.target_person_name = name
-            self.recording_mode = True
-            self.btn_capture.config(text="⏹ Stop Capture", bg="#e74c3c")
-            self.entry_name.config(state=tk.DISABLED)
-            self._log(f"Started capturing faces for: {name}")
-        else:
-            self.recording_mode = False
-            self.btn_capture.config(text="📸 Capture", bg="#3498db")
-            self.entry_name.config(state=tk.NORMAL)
-            self.target_person_name = ""
-            self._log("Capture finished.")
-            self._refresh_db_list()
-            self.engine.reload_faces()
-
-    def _delete_person(self):
-        name = self.people_list_var.get()
-        if not name: return
-        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete {name}?"):
-            success = self.engine.manager.delete_person(name)
-            if success:
-                self._log(f"Deleted person: {name}")
-                self._refresh_db_list()
-                self.engine.reload_faces()
-            else:
-                messagebox.showerror("Error", "Could not delete person.")
-
-    def _open_settings(self):
-        """Open settings window"""
-        SettingsWindow(self.root, self.engine, self)
-
+```python
     def on_close(self):
         self.is_running = False
         if self.cap: self.cap.release()
-        if self.recording_active:
-            self._stop_recording()
         self.root.destroy()
+```
 
+---
+
+## Uruchomienie programu (main)
+Tworzy okno i uruchamia pętlę zdarzeń tkinter.
+
+```python
 if __name__ == "__main__":
     root = tk.Tk()
     app = AIVisionAPP(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()
+```
+
+---
+
+## Aktualizacje funkcjonalne (GUI)
+
+### Blacklist (GUI + CSV)
+- Każda osoba ma przypisany status blacklist w pliku CSV.
+- W sekcji bazy osób dodano checkbox „Black list”, który ustawia 0/1 w CSV.
+- W sekcji Face Recognition dodano przełącznik „Black list filter”, który rysuje czerwone obramowania i wykrzyknik dla osób z blacklisty.
+
+```python
+# GUI: checkbox blacklist w bazie
+self.blacklist_var = tk.BooleanVar(value=False)
+tk.Checkbutton(blacklist_frame, text="Black list", variable=self.blacklist_var,
+               command=self._toggle_blacklist_status, bg="white").pack(anchor=tk.W)
+
+# Face Recognition: filtr blacklist
+self.var_blacklist_filter = tk.BooleanVar(value=config.show_blacklist_alerts)
+tk.Checkbutton(content, text="Black list filter", variable=self.var_blacklist_filter,
+               command=self._update_face_opts, bg="white").pack(anchor=tk.W, pady=(5, 0))
+```
+
+### YOLO Warnings
+- Nowa opcja „Warnings” w bloku YOLO.
+- **Żółty** alert dla wykrycia zwierząt.
+- **Czerwony** alert dla klas krytycznych (np. `knife`, `baseball bat`).
+
+```python
+self.var_warnings = tk.BooleanVar(value=config.show_yolo_warnings)
+tk.Checkbutton(checks_frame, text="Warnings", variable=self.var_warnings,
+               command=self._update_yolo_opts, bg="white").pack(side=tk.LEFT)
+```
+
+### Ustawienia progów detekcji
+Dodano zakładkę „Detection” w ustawieniach, gdzie można ustawić progi dla YOLO i Face Recognition oraz liczbę etykiet (Top-1..3).
+
+```python
+self.yolo_conf_var = tk.DoubleVar(value=config.yolo_confidence_threshold)
+self.face_det_var = tk.DoubleVar(value=config.detection_threshold)
+self.face_conf_var = tk.DoubleVar(value=config.confidence_threshold)
+self.face_topk_var = tk.IntVar(value=config.face_top_k)
+```
+
+### Multi‑label w Face Recognition
+Zamiast jednej etykiety można wyświetlić do 3 najbardziej prawdopodobnych osób.
+
+```python
+label_lines = [f"{l['name']} ({l['confidence']:.2f})" for l in labels]
+```

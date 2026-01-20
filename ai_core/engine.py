@@ -3,6 +3,7 @@ import time
 from .object_system import ObjectSystem
 from .face_system import FaceSystem
 from .manager import PersonManager
+from .config import config
 
 class AIEngine:
     """
@@ -21,6 +22,14 @@ class AIEngine:
         
         self.enable_yolo = False
         self.enable_faces = False
+
+        # Face recognition performance cache
+        self._face_frame_counter = 0
+        self._last_face_results = []
+
+        # Alerts cache
+        self.current_alerts = []
+        self.alert_active = False
         
         self._log("[ENGINE] Ready. Awaiting camera connection...")
 
@@ -60,12 +69,61 @@ class AIEngine:
         if self.enable_yolo:
             yolo_results = self.object_system.process_frame(frame)
             annotated_frame = self.object_system.draw_results(annotated_frame, yolo_results)
+            yolo_alerts = self.object_system.analyze_alerts(yolo_results)
+        else:
+            yolo_alerts = {'warning': [], 'critical': []}
 
         # 2. Twarze (FaceNet)
         if self.enable_faces:
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            face_results = self.face_system.recognize_faces(rgb_frame)
+            self._face_frame_counter += 1
+            interval = max(1, int(getattr(config, 'face_process_interval', 1)))
+
+            if self._face_frame_counter % interval == 0:
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                # Optional downscale for performance
+                scale = float(getattr(config, 'face_downscale', 1.0))
+                if scale > 0 and scale < 1.0:
+                    h, w = rgb_frame.shape[:2]
+                    rgb_small = cv2.resize(rgb_frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                    face_results = self.face_system.recognize_faces(rgb_small)
+
+                    # Scale boxes back to original size
+                    if face_results:
+                        inv = 1.0 / scale
+                        for result in face_results:
+                            x1, y1, x2, y2 = result['box']
+                            result['box'] = (int(x1 * inv), int(y1 * inv), int(x2 * inv), int(y2 * inv))
+                else:
+                    face_results = self.face_system.recognize_faces(rgb_frame)
+
+                self._last_face_results = face_results
+            else:
+                face_results = self._last_face_results
+
+            # Enrich with blacklist info
+            for result in face_results:
+                name = result.get('name')
+                if name and name != "Unknown":
+                    result['is_blacklisted'] = self.manager.get_blacklist_status(name)
+                else:
+                    result['is_blacklisted'] = False
             annotated_frame = self.face_system.draw_results(annotated_frame, face_results)
+            blacklist_names = sorted({r.get('name') for r in face_results if r.get('is_blacklisted')})
+        else:
+            blacklist_names = []
+
+        # Update alert state
+        alerts = []
+        for name in yolo_alerts.get('critical', []):
+            alerts.append(f"critical:{name}")
+        for name in yolo_alerts.get('warning', []):
+            alerts.append(f"warning:{name}")
+        for name in blacklist_names:
+            alerts.append(f"blacklist:{name}")
+
+        self.current_alerts = alerts
+        self.alert_active = len(alerts) > 0
 
         return annotated_frame
 

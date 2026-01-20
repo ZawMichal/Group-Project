@@ -54,7 +54,10 @@ Group-Project/
 ├── yolo11l.pt                  # Model YOLO (large)
 ├── yolo11x.pt                  # Model YOLO (xlarge)
 ├── requirments.txt             # Zależności Python
-└── DOKUMENTACJA.md             # Ten plik
+└── dokumentacja/               # Dokumentacja projektu
+    ├── Dokumentacja_ogólna.md
+    ├── Dokumentacja_GUI.md
+    └── Dokumentacja_użytkownika.md
 ```
 
 ### Przepływ Danych
@@ -913,6 +916,24 @@ Projekt stanowi komprehensywny system analizy wizyjnej łączący dwa zaawansowa
    - Real-time monitoring
 
 System osiąga balans między szybkością (GPU acceleration), dokładnością (zaawansowane modele) i elastycznością (architektura modułowa).
+
+---
+
+## Aktualizacje funkcjonalne
+
+### Blacklist użytkowników
+- Dodano plik CSV z flagą 0/1 dla każdej osoby.
+- Status blacklist jest wykorzystywany podczas rysowania wyników Face Recognition.
+- Kolor czerwony jest zarezerwowany wyłącznie dla osób z blacklisty.
+
+### YOLO Warnings
+- Dodano opcję ostrzeżeń dla wykrytych zwierząt (żółty alert).
+- Dodano alert krytyczny dla `knife` i `baseball bat` (czerwony alert).
+- Lista klas jest pobierana bezpośrednio z `model.names` w runtime.
+
+### Progi detekcji i Top‑K etykiet
+- Konfigurowalne progi dla YOLO i Face Recognition.
+- Możliwość wyświetlania 1–3 najbardziej prawdopodobnych etykiet twarzy.
 
 ---
 

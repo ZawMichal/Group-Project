@@ -11,9 +11,22 @@ class Config:
         # ai_core/config.py -> parent = ai_core -> parent = project_root
         self.project_root = Path(__file__).parent.parent
         self.known_faces_dir = self.project_root / "known_faces"
+        self.blacklist_csv_path = self.known_faces_dir / "blacklist.csv"
+        self.detections_dir = self.project_root / "detections"
+        self.detections_csv_path = self.detections_dir / "detections_log.csv"
         
-        self.confidence_threshold = 0.6
-        self.detection_threshold = 0.9
+        # Face recognition thresholds
+        self.confidence_threshold = 0.6  # Rozpoznanie (match) threshold
+        self.detection_threshold = 0.9   # Detekcja twarzy (MTCNN) threshold
+        self.face_top_k = 1              # 1-3 etykiety najbardziej prawdopodobnych osób
+        self.face_process_interval = 5   # Co ile klatek liczyć rozpoznawanie (performance)
+        self.face_downscale = 0.4        # Skala obrazu do rozpoznawania (0.4 = duże odciążenie)
+
+        # AI input sizing (lower = faster, lower accuracy)
+        self.ai_process_width = 480
+
+        # YOLO detection threshold
+        self.yolo_confidence_threshold = 0.5
         self.image_size = 160
         self.margin = 20
         
@@ -26,6 +39,10 @@ class Config:
         self.show_performance_metrics = True
         self.graph_mode = 'off'  # 'off', 'compact', 'full'
         self.compact_metric = 'fps'  # 'fps', 'cpu', 'gpu', 'inference'
+
+        # Alerts/filters
+        self.show_blacklist_alerts = True
+        self.show_yolo_warnings = False
         
         # CSV Logging (for debugging performance impact of display)
         self.enable_csv_logging = False

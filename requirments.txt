@@ -1,11 +1,18 @@
 # Core Dependencies
-opencv-python==4.13.0.90
+opencv-python==4.8.1.78
 ultralytics==8.4.6
-torch==2.7.1+cu118
-torchvision==0.22.1+cu118
+
+# For CUDA
+# torch==2.7.1+cu118
+# torchvision==0.22.1+cu118
+
+# For CPU
+torch==2.2.2
+torchvision==0.17.2
+
 facenet-pytorch==2.5.3
 Pillow==12.1.0
-numpy==2.4.1
+numpy==1.26.4
 
 # All should be automatically installed
 certifi==2026.1.4

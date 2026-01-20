@@ -62,6 +62,10 @@ class FaceEncoder:
     def _apply_quantization(self):
         """Apply quantization to the model based on config settings"""
         try:
+            if config.device == 'cpu':
+                # CPU: force FP32 for stability and speed
+                self._log("CPU detected: forcing FP32 for face recognition")
+                return
             if config.quantization_mode == 'fp16':
                 self._log(f"Applying FP16 quantization...")
                 self.resnet = self.resnet.half()
@@ -106,23 +110,30 @@ class FaceEncoder:
             img = Image.open(image_path)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-            
+
+            # Normalize image input to avoid dtype inference issues
+            img = Image.fromarray(np.asarray(img, dtype=np.uint8))
+
             boxes, probs = self.mtcnn.detect(img)
 
             if boxes is None or len(boxes) == 0:
                 return None, None, 'no_face'
 
-            faces = self.mtcnn(img)
+            faces, face_probs = self.mtcnn(img, return_prob=True)
             if faces is None:
                 return None, None, 'no_face'
-            
-            if isinstance(faces, list):
-                face = faces[0]
-            else:
+
+            if isinstance(faces, torch.Tensor):
                 if faces.dim() == 3:
                     face = faces.unsqueeze(0)
                 else:
                     face = faces[0:1]
+            else:
+                # list/array fallback
+                try:
+                    face = torch.stack(faces)[0:1]
+                except Exception:
+                    return None, None, 'no_face'
             
             face = face.to(config.device)
             face = self._ensure_model_device(face)
@@ -130,8 +141,12 @@ class FaceEncoder:
             
             with torch.no_grad():
                 encoding = self.resnet(face).cpu().numpy()[0]
-            
-            return encoding, float(probs[0]), None
+
+            conf = None
+            if face_probs is not None and len(face_probs) > 0:
+                conf = float(face_probs[0])
+
+            return encoding, conf, None
         except Exception as e:
             return None, None, str(e)
     
@@ -236,6 +251,10 @@ class FaceEncoder:
                     
                     matches = sorted(matches, key=lambda x: x['confidence'], reverse=True)
                     top_match = matches[0]
+
+                    top_k = max(1, min(3, int(getattr(config, 'face_top_k', 1))))
+                    top_matches = matches[:top_k]
+                    labels = [{'name': m['name'], 'confidence': m['confidence']} for m in top_matches]
                     
                     if top_match['confidence'] >= config.confidence_threshold:
                         name = top_match['name']
@@ -243,14 +262,19 @@ class FaceEncoder:
                     else:
                         name = "Unknown"
                         final_conf = top_match['confidence'] # Zwracamy conf nawet jak niski
+                        # Dodaj Unknown jako pierwszy label przy niskiej pewności
+                        unknown_conf = max(0.0, 1.0 - top_match['confidence'])
+                        labels = [{'name': 'Unknown', 'confidence': unknown_conf}] + labels[:max(0, top_k - 1)]
                 else:
                     name = "Unknown"
                     final_conf = 0.0
+                    labels = [{'name': 'Unknown', 'confidence': 1.0}]
                 
                 results.append({
                     'box': box.astype(int),
                     'name': name,
-                    'confidence': final_conf
+                    'confidence': final_conf,
+                    'labels': labels
                 })
             
             return results
