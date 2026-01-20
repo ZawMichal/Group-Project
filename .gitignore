@@ -57,3 +57,7 @@ desktop.ini
 
 # Virtual environment
 .env
+
+# GUI documentation files
+*.csv
+*.mp4
