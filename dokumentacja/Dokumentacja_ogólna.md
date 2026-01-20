@@ -935,6 +935,11 @@ System osiąga balans między szybkością (GPU acceleration), dokładnością (
 - Konfigurowalne progi dla YOLO i Face Recognition.
 - Możliwość wyświetlania 1–3 najbardziej prawdopodobnych etykiet twarzy.
 
+### Detections (CSV + evidence)
+- Automatyczne tworzenie folderu `detections/`.
+- Log zdarzeń w `detections_log.csv` (czas startu, alerty, nazwa pliku wideo).
+- Nagrania MP4 trwają tylko w czasie aktywnej detekcji.
+
 ---
 
 ## Bibliografia i Źródła

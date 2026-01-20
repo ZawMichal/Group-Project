@@ -1101,3 +1101,23 @@ Zamiast jednej etykiety można wyświetlić do 3 najbardziej prawdopodobnych os�
 ```python
 label_lines = [f"{l['name']} ({l['confidence']:.2f})" for l in labels]
 ```
+
+---
+
+## Detections (CSV + nagrania wideo)
+
+Dodano automatyczne logowanie zdarzeń oraz nagrywanie „evidence”:
+- Tworzy folder `detections/`.
+- Zapisuje CSV `detections_log.csv` z czasem i listą alertów.
+- Zapisuje wideo MP4 o nazwie `evidence_YYYYmmdd_HHMMSS.mp4`.
+- Nagranie trwa tak długo, jak aktywna jest detekcja (warning/critical/blacklist).
+- CSV zapisuje **tylko moment startu** nagrania.
+
+```python
+def _start_recording(self, frame, alerts_text):
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    evidence_name = f"evidence_{timestamp}.mp4"
+    evidence_path = self.detections_dir / evidence_name
+    ...
+    writer.writerow([datetime.datetime.now().isoformat(), alerts_text, evidence_name])
+```

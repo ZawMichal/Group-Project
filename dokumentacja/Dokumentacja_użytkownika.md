@@ -122,3 +122,12 @@ Ten dokument opisuje wszystkie funkcje dostępne z poziomu GUI oraz sposób ich 
 - **Żółty** → zwierzę wykryte przez YOLO (gdy Warnings włączone).
 - **Zielony** → osoba rozpoznana jako znana.
 - **Pomarańczowy** → osoba nierozpoznana (Unknown).
+
+---
+
+## 11. Detections (log + nagrania)
+Podczas wykrycia alertu (warning/critical/blacklist) aplikacja automatycznie:
+- tworzy nagranie MP4 w folderze `detections/`,
+- zapisuje w `detections_log.csv` moment startu, typy alertów i nazwę pliku wideo.
+
+Nagranie trwa tak długo, jak aktywna jest detekcja.
